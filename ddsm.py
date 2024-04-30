@@ -128,6 +128,25 @@ def reflect_boundaries(x, lower_bound=0.0, upper_bound=1.0):
     x = torch.where(x > upper_bound, 2 * upper_bound - x, x)
     return x
 
+
+def reflect(x):
+    """
+    Performs reflections until x is inside the domain.
+
+    Args
+    ----
+    x (Tensor):
+        input of shape [B, ...]
+
+    Returns
+    -------
+    an output Tensor with the same shape as x which is the "reflected"-inside version.
+    """
+    xm2 = x % 2
+    xm2[xm2 > 1] = 2 - xm2[xm2 > 1]
+    return xm2
+
+
 def Jacobi_Euler_Maruyama_sampler(
         x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5
 ):
@@ -144,12 +163,18 @@ def Jacobi_Euler_Maruyama_sampler(
 
     def step(x, step_size):
         g = torch.sqrt(s * x * (1 - x))
+#         return (
+#                 x
+#                 + 0.5 * s * (a * (1 - x) - b * x) * step_size
+#                 + torch.sqrt(step_size) * g * torch.randn_like(x)
+#         )
         dx = x + 0.5 * s * (a * (1 - x) - b * x) * step_size
         x_next = dx + torch.sqrt(step_size) * g * torch.randn_like(x)
 
-        # Ensure the values stay within [0, 1]
-        x_next = torch.clamp(x_next, eps, 1 - eps)
+        ##### Ensure the values stay within [0, 1]
+        #x_next = torch.clamp(x_next, eps, 1 - eps)
         #x_next = reflect_boundaries(x_next, eps, 1 - eps)
+        x_next= reflect(x_next)
         return x_next
     # def step(x, step_size):
     #     g = torch.sqrt(s * x * (1 - x))  # Adjusted diffusion term to stay within bounds
@@ -161,11 +186,15 @@ def Jacobi_Euler_Maruyama_sampler(
     time_steps = torch.linspace(0, t, num_steps, device=device)
     step_size = time_steps[1] - time_steps[0]
     x = x0
+    # with torch.no_grad():
+    #     for _ in time_steps:
+    #         x_next = step(x, step_size)
+    #         x_next = x_next.clip(eps, 1 - eps)
+    #         x = x_next
     with torch.no_grad():
         for _ in time_steps:
-            x_next = step(x, step_size)
-            x_next = x_next.clip(eps, 1 - eps)
-            x = x_next
+            x = step(x, step_size)
+
     return x
 ##########tianqi end ##########
 
