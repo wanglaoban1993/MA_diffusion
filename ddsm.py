@@ -90,6 +90,44 @@ def jacobi_diffusion_density(x0, xt, t, a, b, order=100, speed_balanced=True):
     ).sum(-1)
 
 
+# def Jacobi_Euler_Maruyama_sampler(
+#         x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5
+# ):
+#     """
+#     Generate Jacobi diffusion samples with the Euler-Maruyama solver.
+#     """
+#     a = a.to(device)
+#     b = b.to(device)
+#     x0 = x0.to(device)
+#     if speed_balanced:
+#         s = 2 / (a + b)
+#     else:
+#         s = torch.ones_like(a)
+
+#     def step(x, step_size):
+#         g = torch.sqrt(s * x * (1 - x))
+#         return (
+#                 x
+#                 + 0.5 * s * (a * (1 - x) - b * x) * step_size
+#                 + torch.sqrt(step_size) * g * torch.randn_like(x)
+#         )
+
+#     time_steps = torch.linspace(0, t, num_steps, device=device)
+#     step_size = time_steps[1] - time_steps[0]
+#     x = x0
+#     with torch.no_grad():
+#         for _ in time_steps:
+#             x_next = step(x, step_size)
+#             x_next = x_next.clip(eps, 1 - eps)
+#             x = x_next
+#     return x
+##########tianqi start ###########
+def reflect_boundaries(x, lower_bound=0.0, upper_bound=1.0):
+
+    x = torch.where(x < lower_bound, 2 * lower_bound - x, x)
+    x = torch.where(x > upper_bound, 2 * upper_bound - x, x)
+    return x
+
 def Jacobi_Euler_Maruyama_sampler(
         x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5
 ):
@@ -106,11 +144,19 @@ def Jacobi_Euler_Maruyama_sampler(
 
     def step(x, step_size):
         g = torch.sqrt(s * x * (1 - x))
-        return (
-                x
-                + 0.5 * s * (a * (1 - x) - b * x) * step_size
-                + torch.sqrt(step_size) * g * torch.randn_like(x)
-        )
+        dx = x + 0.5 * s * (a * (1 - x) - b * x) * step_size
+        x_next = dx + torch.sqrt(step_size) * g * torch.randn_like(x)
+
+        # Ensure the values stay within [0, 1]
+        x_next = torch.clamp(x_next, eps, 1 - eps)
+        #x_next = reflect_boundaries(x_next, eps, 1 - eps)
+        return x_next
+    # def step(x, step_size):
+    #     g = torch.sqrt(s * x * (1 - x))  # Adjusted diffusion term to stay within bounds
+    #     drift = 0.5 * s * (a * (1 - x) - b * x)
+    #     drift = torch.clamp(drift, -x/step_size, (1 - x)/step_size)  # Clamping the drift
+    #     x_next = x + drift * step_size + torch.sqrt(step_size) * g * torch.randn_like(x)
+    #     return torch.clamp(x_next, eps, 1 - eps)
 
     time_steps = torch.linspace(0, t, num_steps, device=device)
     step_size = time_steps[1] - time_steps[0]
@@ -121,7 +167,7 @@ def Jacobi_Euler_Maruyama_sampler(
             x_next = x_next.clip(eps, 1 - eps)
             x = x_next
     return x
-
+##########tianqi end ##########
 
 def noise_factory(N, n_time_steps, a, b, total_time=4, order=100,
                   time_steps=1000, speed_balanced=True, logspace=False,
