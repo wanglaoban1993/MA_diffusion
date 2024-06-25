@@ -18,8 +18,10 @@ def parse_args():
     parser.add_argument("-t", '--num_time_steps', type=int,
                         help="Number of time steps between <min_time> and <max_time> (default = 400)",
                         default=400) 
-    parser.add_argument("--speed_balance", action='store_true',
-                        help="Adding speed balance to Jacobi Process")
+    parser.add_argument("--speed_balance", type=bool, nargs='?', const=True, default=False,
+                        help="Adding speed balance to Jacobi Process (default = False)")
+    # parser.add_argument("--speed_balance", action='store_true',
+    #                     help="Adding speed balance to Jacobi Process")
     parser.add_argument("--max_time", type=float,
                         help="Last time point (default = 4.0)",
                         default=4.0)
@@ -66,7 +68,7 @@ def visualize_diffusion(timepoints, samples, plot_name, title="Diffusion Process
     plt.xlabel("Time(t)")
     plt.ylabel("Xt")
     plt.legend()
-    plt.savefig(f'/sudoku/{plot_name}.png')
+    plt.savefig(f'sudoku/{plot_name}.png')
     plt.show()
 
 if __name__ == '__main__':
@@ -81,16 +83,29 @@ if __name__ == '__main__':
     str_speed = ".speed_balance" if args.speed_balance else ""
     filename = f'steps{args.num_time_steps}.cat{args.num_cat}{str_speed}.time{args.max_time}.' \
                f'samples{args.num_samples}'
-    filepath = os.path.join(args.out_path, filename + ".pth")
+    filepath = os.path.join(args.out_path, filename +"_reflect_boundaries"+ "_s1"+ ".pth")
+    #filepath = os.path.join(args.out_path, filename + "_reflection"+ "_s1"+ ".pth")
+    #filepath = os.path.join(args.out_path, filename + "_independent_model"+ "_s1"+ ".pth")
+    #filepath = os.path.join(args.out_path, filename + "_path_model"+ "_s1"+ ".pth")
 
     if os.path.exists(filepath):
         print("File is already exists.")
         exit(1)
 
     torch.set_default_dtype(torch.float64)
-
+    
+    device="cuda"
     alpha = torch.ones(args.num_cat - 1)
     beta =  torch.arange(args.num_cat - 1, 0, -1)
+    #alpha = torch.ones(args.num_cat - 1).to(device) * 2  # 所有元素都是2
+    #beta = torch.ones(args.num_cat - 1).to(device) * 2  # 所有元素都是2
+    # alpha = torch.arange(1, args.num_cat).to(device)  # 从1递增到 args.num_cat-1
+    # beta = torch.arange(args.num_cat - 1, 0, -1).to(device)  # 从 args.num_cat-1 递减到1
+    # alpha = torch.rand(args.num_cat - 1).to(device) * 2  # 随机值在 [0, 2] 之间
+    # beta = torch.rand(args.num_cat - 1).to(device) * 2  # 随机值在 [0, 2] 之间
+
+
+
 
     v_one, v_zero, v_one_loggrad, v_zero_loggrad, timepoints = noise_factory(args.num_samples,
                                                                              args.num_time_steps,

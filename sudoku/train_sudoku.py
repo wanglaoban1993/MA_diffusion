@@ -3,7 +3,6 @@ import random
 import math
 from matplotlib import pyplot as plt
 import tqdm
-
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -11,13 +10,16 @@ from torch.nn import functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
+import os
 import sys 
-sys.path.append("../")
-from ddsm import *
+print("Before adding path:", sys.path)
+#sys.path.append("../")
+#sys.path.append('./MA_2024')
+#print("After adding path:", sys.path)
+from ddsm_original import *
 
 def worker_init_fn(worker_id):
     np.random.seed(worker_id)
-
 
 #############################################
 ############ SUDOKU DATASET #################
@@ -99,7 +101,10 @@ def sudoku_acc(sample, return_array=False):
     if return_array:
         return corrects
     else:
-        print('correct {} %'.format(100 * correct / total))
+        print('i start here')
+        correct_rate= 100 * correct / total
+        print('correct {} %'.format(correct_rate))
+        return correct_rate
 
 #############################################
 ############## SUDOKU MDDEL #################
@@ -303,10 +308,41 @@ if __name__ == "__main__":
 
     lr = 1e-4
     num_steps = 500
-    n_epochs = 600
+    n_epochs = 650
+    #n_epochs = 500
     random_order = False
+    save_interval = 50
 
-    v_one, v_zero, v_one_loggrad, v_zero_loggrad, timepoints =  torch.load('steps400.cat9.time1.0.samples100000.pth') 
+    #v_one, v_zero, v_one_loggrad, v_zero_loggrad, timepoints =  torch.load('steps400.cat9.time1.0.samples100000.pth')
+    #'steps400.cat9.time1.0.samples100000.pth'
+    #filename= 'steps400.cat9.time1.0.samples50000.pth'
+    filename= 'steps400.cat9.time1.0.samples50000_independent_model.pth'
+    file_path = os.path.join(sys.path[0], filename)
+    print('#####file_path:', file_path)
+    ###### to extract the steps number ####
+    import re
+
+    def extract_first_number_series(text):
+        """Extracts the first series of consecutive digits from a string.
+
+        Args:
+            text: The string to extract the number series from.
+
+        Returns:
+            The first series of consecutive digits in the string, or None if not found.
+        """
+        match = re.search(r"\d+", text)
+        if match:
+           number_str = match.group()
+        # Convert the extracted number string to a float for division
+           return float(number_str)
+        else:
+           return None
+    dt= 1/extract_first_number_series(filename)
+    print('here is dt', dt)
+
+    #load the pre-sampleing model
+    v_one, v_zero, v_one_loggrad, v_zero_loggrad, timepoints =  torch.load(file_path)  
     n_timesteps = timepoints.shape[0]
     alpha = torch.FloatTensor([1.0])
     beta = torch.FloatTensor([8.0])
@@ -352,7 +388,7 @@ if __name__ == "__main__":
     time_dependent_weights = time_dependent_weights / time_dependent_weights.mean()
 
     plt.plot(torch.sqrt(time_dependent_weights.cpu()))
-    plt.savefig("timedependent_weight.png")
+    plt.savefig("timedependent_weight_original.png")
 
     # Train code
     score_model = ScoreNet(define_relative_encoding())
@@ -413,17 +449,23 @@ if __name__ == "__main__":
 
         print('Training loss', avg_loss / num_items)
 
-        sampler = Euler_Maruyama_sampler
+        # sampler = Euler_Maruyama_sampler
 
-        score_model.eval()
-        samples = sampler(score_model,
-                          (9, 9, 9),
-                          batch_size=256,
-                          max_time=1,
-                          time_dilation=1,
-                          num_steps=200,
-                          random_order=False,
-                          speed_balanced=False,
-                          device=device)
-        sudoku_acc(samples)
+        # score_model.eval()
+        # samples = sampler(score_model,
+        #                     (9, 9, 9),
+        #                     batch_size=256,
+        #                     max_time=1,
+        #                     time_dilation=1,
+        #                     num_steps=200,
+        #                     random_order=False,
+        #                     speed_balanced=False,
+        #                     device=device)
+        # sudoku_acc(samples)
+
+        # 保存模型
+        if epoch % save_interval == 0 or epoch == n_epochs - 1:
+            model_path = f"score_model_epoch_{epoch}.pth"
+            torch.save(score_model.state_dict(), model_path)
+            print(f"Model saved at epoch {epoch}")
         j += 1

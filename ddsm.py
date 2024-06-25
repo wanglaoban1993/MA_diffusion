@@ -89,7 +89,7 @@ def jacobi_diffusion_density(x0, xt, t, a, b, order=100, speed_balanced=True):
             * jacobi(xt * 2 - 1, alpha=b - 1, beta=a - 1, order=order)
     ).sum(-1)
 
-
+# Original JEM_sampler
 # def Jacobi_Euler_Maruyama_sampler(
 #         x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5
 # ):
@@ -168,21 +168,16 @@ def Jacobi_Euler_Maruyama_sampler(
 #                 + 0.5 * s * (a * (1 - x) - b * x) * step_size
 #                 + torch.sqrt(step_size) * g * torch.randn_like(x)
 #         )
-        dx = x + 0.5 * s * (a * (1 - x) - b * x) * step_size
-        x_next = dx + torch.sqrt(step_size) * g * torch.randn_like(x)
 
+        dx = x + 0.5 * s * (a * (1 - x) - b * x) * step_size
+        x_next = dx + torch.sqrt(step_size) * g * torch.randn_like(x) #modfy the step process more compact and cleaner
+        
         ##### Ensure the values stay within [0, 1]
         #x_next = torch.clamp(x_next, eps, 1 - eps)
-        #x_next = reflect_boundaries(x_next, eps, 1 - eps)
-        x_next= reflect(x_next)
+        x_next = reflect_boundaries(x_next, eps, 1 - eps)
+        #x_next= reflect(x_next)
         return x_next
-    # def step(x, step_size):
-    #     g = torch.sqrt(s * x * (1 - x))  # Adjusted diffusion term to stay within bounds
-    #     drift = 0.5 * s * (a * (1 - x) - b * x)
-    #     drift = torch.clamp(drift, -x/step_size, (1 - x)/step_size)  # Clamping the drift
-    #     x_next = x + drift * step_size + torch.sqrt(step_size) * g * torch.randn_like(x)
-    #     return torch.clamp(x_next, eps, 1 - eps)
-
+    
     time_steps = torch.linspace(0, t, num_steps, device=device)
     step_size = time_steps[1] - time_steps[0]
     x = x0
@@ -193,14 +188,16 @@ def Jacobi_Euler_Maruyama_sampler(
     #         x = x_next
     with torch.no_grad():
         for _ in time_steps:
-            x = step(x, step_size)
-
+            x = step(x, step_size) #clamping is added already in function step().
     return x
+
 ##########tianqi end ##########
 
 def noise_factory(N, n_time_steps, a, b, total_time=4, order=100,
                   time_steps=1000, speed_balanced=True, logspace=False,
-                  mode="independent", device="cuda"):
+                  mode="independent", 
+                  #mode="path", 
+                  device="cuda"):
     """
     Generate Jacobi diffusion samples and compute score of transition density function.
     """
@@ -741,7 +738,9 @@ def Euler_Maruyama_sampler(
                 if mask is not None:
                     next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
 
-                v = torch.clamp(next_v, eps, 1 - eps).detach()
+                #v = torch.clamp(next_v, eps, 1 - eps).detach()
+                v = reflect_boundaries(next_v, eps, 1 - eps).detach()
+                #v = reflect(next_v).detach()
             else:
                 x = x[..., np.argsort(order)]
                 order = np.random.permutation(np.arange(sample_shape[-1]))
@@ -750,7 +749,9 @@ def Euler_Maruyama_sampler(
                     mask_v = sb.inv(mask[..., order])
 
                 v = sb._inverse(x[..., order], prevent_nan=True)
-                v = torch.clamp(v, eps, 1 - eps).detach()
+                #v = torch.clamp(v, eps, 1 - eps).detach()
+                v = reflect_boundaries(v, eps, 1 - eps).detach()
+                #v = reflect(v).detach()
 
                 g = torch.sqrt(v * (1 - v))
                 batch_time_step = torch.ones(batch_size, device=device) * time_step
@@ -775,16 +776,22 @@ def Euler_Maruyama_sampler(
                 if mask is not None:
                     next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
 
-                v = torch.clamp(next_v, eps, 1 - eps).detach()
+                #v = torch.clamp(next_v, eps, 1 - eps).detach()
+                v = reflect_boundaries(next_v, eps, 1 - eps).detach()
+                #v = reflect(next_v).detach()
 
     if mask is not None:
         mean_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
 
     # Do not include any noise in the last sampling step.
     if not random_order:
-        return sb(torch.clamp(mean_v, eps, 1 - eps))
+        #return sb(torch.clamp(mean_v, eps, 1 - eps))
+        return sb(reflect_boundaries(mean_v, eps, 1 - eps))
+        #return sb(reflect(mean_v))
     else:
-        return sb(torch.clamp(mean_v, eps, 1 - eps))[..., np.argsort(order)]
+        #return sb(torch.clamp(mean_v, eps, 1 - eps))[..., np.argsort(order)]
+        return sb(reflect_boundaries(mean_v, eps, 1 - eps))[..., np.argsort(order)]
+        #return sb(reflect(mean_v))[..., np.argsort(order)]
 
 
 #############################################
