@@ -219,7 +219,6 @@ def noise_factory(N, n_time_steps, a, b, total_time=4, order=100,
 
     if mode == "independent":
         for i, t in enumerate(timepoints):
-            print(f'i={i}')
             noise_factory_one[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                 noise_factory_one[:, i, :], a, b, t, time_steps,
                 speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
