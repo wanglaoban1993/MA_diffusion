@@ -173,8 +173,8 @@ def Jacobi_Euler_Maruyama_sampler(
         x_next = dx + torch.sqrt(step_size) * g * torch.randn_like(x) #modfy the step process more compact and cleaner
         
         ##### Ensure the values stay within [0, 1]
-        #x_next = torch.clamp(x_next, eps, 1 - eps)
-        x_next = reflect_boundaries(x_next, eps, 1 - eps)
+        x_next = torch.clamp(x_next, eps, 1 - eps)
+        #x_next = reflect_boundaries(x_next, eps, 1 - eps)
         #x_next= reflect(x_next)
         return x_next
     
@@ -738,8 +738,8 @@ def Euler_Maruyama_sampler(
                 if mask is not None:
                     next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
 
-                #v = torch.clamp(next_v, eps, 1 - eps).detach()
-                v = reflect_boundaries(next_v, eps, 1 - eps).detach()
+                v = torch.clamp(next_v, eps, 1 - eps).detach()
+                #v = reflect_boundaries(next_v, eps, 1 - eps).detach()
                 #v = reflect(next_v).detach()
             else:
                 x = x[..., np.argsort(order)]
@@ -749,8 +749,8 @@ def Euler_Maruyama_sampler(
                     mask_v = sb.inv(mask[..., order])
 
                 v = sb._inverse(x[..., order], prevent_nan=True)
-                #v = torch.clamp(v, eps, 1 - eps).detach()
-                v = reflect_boundaries(v, eps, 1 - eps).detach()
+                v = torch.clamp(v, eps, 1 - eps).detach()
+                #v = reflect_boundaries(v, eps, 1 - eps).detach()
                 #v = reflect(v).detach()
 
                 g = torch.sqrt(v * (1 - v))
@@ -776,8 +776,8 @@ def Euler_Maruyama_sampler(
                 if mask is not None:
                     next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
 
-                #v = torch.clamp(next_v, eps, 1 - eps).detach()
-                v = reflect_boundaries(next_v, eps, 1 - eps).detach()
+                v = torch.clamp(next_v, eps, 1 - eps).detach()
+                #v = reflect_boundaries(next_v, eps, 1 - eps).detach()
                 #v = reflect(next_v).detach()
 
     if mask is not None:
@@ -785,12 +785,12 @@ def Euler_Maruyama_sampler(
 
     # Do not include any noise in the last sampling step.
     if not random_order:
-        #return sb(torch.clamp(mean_v, eps, 1 - eps))
-        return sb(reflect_boundaries(mean_v, eps, 1 - eps))
+        return sb(torch.clamp(mean_v, eps, 1 - eps))
+        #return sb(reflect_boundaries(mean_v, eps, 1 - eps))
         #return sb(reflect(mean_v))
     else:
-        #return sb(torch.clamp(mean_v, eps, 1 - eps))[..., np.argsort(order)]
-        return sb(reflect_boundaries(mean_v, eps, 1 - eps))[..., np.argsort(order)]
+        return sb(torch.clamp(mean_v, eps, 1 - eps))[..., np.argsort(order)]
+        #return sb(reflect_boundaries(mean_v, eps, 1 - eps))[..., np.argsort(order)]
         #return sb(reflect(mean_v))[..., np.argsort(order)]
 
 
