@@ -24,8 +24,7 @@
 source "/etc/slurm/local_job_dir.sh"
 echo "$PWD/${SLURM_JOB_ID}_stats.out" > $LOCAL_JOB_DIR/stats_file_loc_cfg
 
-echo "Job with MA_2024.sif env. presampling with independt reflection model, alpha = torch.ones(args.num_cat - 1)
-    beta =  torch.arange(args.num_cat - 1, 0, -1), s= 1" 
+echo "Job with MA_2024.sif env. presampling with independt model, running result_check" 
 
 #cp -r ${SLURM_SUBMIT_DIR}/sudoku ${LOCAL_JOB_DIR}
 
@@ -43,8 +42,8 @@ echo "Job with MA_2024.sif env. presampling with independt reflection model, alp
 apptainer exec --nv --bind ${LOCAL_JOB_DIR} ../base_env_pytorch.sif \
 bash -c "
 source /opt/conda/bin/activate base  # Activate the base conda environment
-python3 ${SLURM_SUBMIT_DIR}/presample_noise.py -n 50000 -c 9 -t 100 --max_time 1 --out_path sudoku/ --boundary_mode 'reflect'
-"
+python3 ${SLURM_SUBMIT_DIR}/results_check_ddsm_channel_std.py"
+#python3 ${SLURM_SUBMIT_DIR}/results_check.py"
 
 # This command copies all results generated in $LOCAL_JOB_DIR back to the submit folder regarding th$
 cp -r ${LOCAL_JOB_DIR}/${SLURM_JOB_ID} ${SLURM_SUBMIT_DIR}

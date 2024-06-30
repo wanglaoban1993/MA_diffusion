@@ -41,7 +41,7 @@ def parse_args():
                         default='path')
     parser.add_argument("--logspace", action='store_true',
                         help="Use logspace time points")
-
+    parser.add_argument("--boundary_mode", choices=['clamp', 'reflect_boundaries', 'reflect'], default= 'clamp')
     return parser.parse_args()
 
 
@@ -80,13 +80,28 @@ if __name__ == '__main__':
         print(f"{args.out_path} is already exists and it is not a directory")
         exit(1)
 
-    str_speed = ".speed_balance" if args.speed_balance else ""
-    filename = f'steps{args.num_time_steps}.cat{args.num_cat}{str_speed}.time{args.max_time}.' \
-               f'samples{args.num_samples}'
-    filepath = os.path.join(args.out_path, filename +"_reflect_boundaries"+ "_s1"+ ".pth")
+    #str_speed = ".speed_balance" if args.speed_balance else ""
+    s_name= 'sab' if args.speed_balance else "s1"
+
+    boundary_mode = None
+    chosen_mode = args.boundary_mode
+    valid_choices = ["clamp", "reflect_boundaries", "reflect"]
+    if chosen_mode in valid_choices:
+        boundary_mode = chosen_mode
+    
+    filename = f'steps{args.num_time_steps}.cat{args.num_cat}.time{args.max_time}.' \
+               f'samples{args.num_samples}.{boundary_mode}.{s_name}'
+    #filepath = os.path.join(args.out_path, filename +"_reflect_boundaries"+ "_s1"+ ".pth")
     #filepath = os.path.join(args.out_path, filename + "_reflection"+ "_s1"+ ".pth")
     #filepath = os.path.join(args.out_path, filename + "_independent_model"+ "_s1"+ ".pth")
     #filepath = os.path.join(args.out_path, filename + "_path_model"+ "_s1"+ ".pth")
+
+    #filepath = os.path.join(args.out_path, filename +"_reflect_boundaries"+ "_sab"+ ".pth")
+    #filepath = os.path.join(args.out_path, filename + "_reflection"+ "_sab"+ ".pth")
+    #filepath = os.path.join(args.out_path, filename + "_independent_model"+ "_sab"+ ".pth")
+    #filepath = os.path.join(args.out_path, filename + "_path_model"+ "_sab"+ ".pth")
+
+    filepath = os.path.join(args.out_path, filename + ".pth")
 
     if os.path.exists(filepath):
         print("File is already exists.")
@@ -116,7 +131,8 @@ if __name__ == '__main__':
                                                                              time_steps=args.steps_per_tick,
                                                                              logspace=args.logspace,
                                                                              speed_balanced=args.speed_balance,
-                                                                             mode=args.mode)
+                                                                             mode=args.mode,
+                                                                             boundary_mode= args.boundary_mode)
 
     v_one = v_one.cpu()
     v_zero = v_zero.cpu()

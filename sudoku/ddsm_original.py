@@ -148,7 +148,7 @@ def reflect(x):
 
 
 def Jacobi_Euler_Maruyama_sampler(
-        x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5
+        x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5, boundary_mode='clamp'
 ):
     """
     Generate Jacobi diffusion samples with the Euler-Maruyama solver.
@@ -172,9 +172,17 @@ def Jacobi_Euler_Maruyama_sampler(
         x_next = dx + torch.sqrt(step_size) * g * torch.randn_like(x)
 
         ##### Ensure the values stay within [0, 1]
-        x_next = torch.clamp(x_next, eps, 1 - eps)
+        #x_next = torch.clamp(x_next, eps, 1 - eps)
         #x_next = reflect_boundaries(x_next, eps, 1 - eps)
         #x_next= reflect(x_next)
+        if boundary_mode == 'clamp':
+            x_next = torch.clamp(x_next, eps, 1 - eps)
+        elif boundary_mode == 'reflect_boundaries':
+            x_next = reflect_boundaries(x_next, eps, 1 - eps)
+        elif boundary_mode == 'reflect':
+            x_next= reflect(x_next)
+        else:
+            raise ValueError
         return x_next
     
     time_steps = torch.linspace(0, t, num_steps, device=device)
@@ -193,7 +201,7 @@ def Jacobi_Euler_Maruyama_sampler(
 
 def noise_factory(N, n_time_steps, a, b, total_time=4, order=100,
                   time_steps=1000, speed_balanced=True, logspace=False,
-                  mode="independent", device="cuda"):
+                  mode="independent", device="cuda", noise_only= False, boundary_mode='clamp'):
     """
     Generate Jacobi diffusion samples and compute score of transition density function.
     """
@@ -210,67 +218,72 @@ def noise_factory(N, n_time_steps, a, b, total_time=4, order=100,
         for i, t in enumerate(timepoints):
             noise_factory_one[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                 noise_factory_one[:, i, :], a, b, t, time_steps,
-                speed_balanced=speed_balanced, device=device)
+                speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
             noise_factory_zero[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                 noise_factory_zero[:, i, :], a, b, t, time_steps,
-                speed_balanced=speed_balanced, device=device)
+                speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
     elif mode == "path":
         for i, t in enumerate(timepoints):
             if i == 0:
                 noise_factory_one[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_one[:, i, :], a, b, timepoints[i], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
                 noise_factory_zero[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_zero[:, i, :], a, b, timepoints[i], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
             else:
                 noise_factory_one[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_one[:, i - 1, :],
                     a, b, timepoints[i] - timepoints[i - 1], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
                 noise_factory_zero[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_zero[:, i - 1, :],
                     a, b, timepoints[i] - timepoints[i - 1], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
     else:
         raise ValueError
 
-    noise_factory_one_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
-    noise_factory_zero_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
 
-    for i, t in enumerate(timepoints):
-        xt = noise_factory_one[:, i, :].detach().clone()
+    if noise_only:
+        return noise_factory_one, noise_factory_zero
+    
+    else:
+        noise_factory_one_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
+        noise_factory_zero_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
 
-        xt.requires_grad = True
-        p = jacobi_diffusion_density(
-            torch.ones(xt.size(), device=device),
-            xt.to(device), t, a.to(device), b.to(device), order=order,
-            speed_balanced=speed_balanced,
-        )
-        p.log().sum().backward()
-        noise_factory_one_loggrad[:, i, :] = xt.grad.to(
-            noise_factory_zero_loggrad.device
-        )
+        for i, t in enumerate(timepoints):
+            xt = noise_factory_one[:, i, :].detach().clone()
 
-        xt = noise_factory_zero[:, i, :].detach().clone()
-        xt.requires_grad = True
-        p = jacobi_diffusion_density(
-            torch.zeros(xt.size(), device=device),
-            xt.to(device), t, a.to(device), b.to(device),
-            order=order,
-            speed_balanced=speed_balanced,
+            xt.requires_grad = True
+            p = jacobi_diffusion_density(
+                torch.ones(xt.size(), device=device),
+                xt.to(device), t, a.to(device), b.to(device), order=order,
+                speed_balanced=speed_balanced,
+            )
+            p.log().sum().backward()
+            noise_factory_one_loggrad[:, i, :] = xt.grad.to(
+                noise_factory_zero_loggrad.device
+            )
+
+            xt = noise_factory_zero[:, i, :].detach().clone()
+            xt.requires_grad = True
+            p = jacobi_diffusion_density(
+                torch.zeros(xt.size(), device=device),
+                xt.to(device), t, a.to(device), b.to(device),
+                order=order,
+                speed_balanced=speed_balanced,
+            )
+            p.log().sum().backward()
+            noise_factory_zero_loggrad[:, i, :] = xt.grad.to(
+                noise_factory_zero_loggrad.device
+            )
+        return (
+            noise_factory_one,
+            noise_factory_zero,
+            noise_factory_one_loggrad,
+            noise_factory_zero_loggrad,
+            timepoints,
         )
-        p.log().sum().backward()
-        noise_factory_zero_loggrad[:, i, :] = xt.grad.to(
-            noise_factory_zero_loggrad.device
-        )
-    return (
-        noise_factory_one,
-        noise_factory_zero,
-        noise_factory_one_loggrad,
-        noise_factory_zero_loggrad,
-        timepoints,
-    )
 
 
 class UnitStickBreakingTransform(Transform):
@@ -593,6 +606,7 @@ def Euler_Maruyama_sampler(
         speed_factor=None,
         concat_input=None,
         eps=1e-5,
+        boundary_mode='clamp'
 ):
     """
     Generate samples from score-based models with the Euler-Maruyama solver
@@ -733,9 +747,17 @@ def Euler_Maruyama_sampler(
 
                 if mask is not None:
                     next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
-
-                v = torch.clamp(next_v, eps, 1 - eps).detach()
+                #v = torch.clamp(next_v, eps, 1 - eps).detach()
+                #v = reflect_boundaries(next_v, eps, 1 - eps).detach()
                 #v = reflect(next_v).detach()
+
+                if boundary_mode == 'clamp':
+                    v = torch.clamp(next_v, eps, 1 - eps).detach()
+                elif boundary_mode == 'reflect_boundaries':
+                    v = reflect_boundaries(next_v, eps, 1 - eps).detach()
+                elif boundary_mode == 'reflect':
+                    v = reflect(next_v).detach()
+
 
             else:
                 x = x[..., np.argsort(order)]
@@ -745,8 +767,14 @@ def Euler_Maruyama_sampler(
                     mask_v = sb.inv(mask[..., order])
 
                 v = sb._inverse(x[..., order], prevent_nan=True)
-                v = torch.clamp(v, eps, 1 - eps).detach()
+                #v = torch.clamp(v, eps, 1 - eps).detach()
                 #v = reflect(v).detach()
+                if boundary_mode == 'clamp':
+                    v = torch.clamp(v, eps, 1 - eps).detach()
+                elif boundary_mode == 'reflect_boundaries':
+                    v = reflect_boundaries(v, eps, 1 - eps).detach()
+                elif boundary_mode == 'reflect':
+                    v = reflect(v).detach()
 
                 g = torch.sqrt(v * (1 - v))
                 batch_time_step = torch.ones(batch_size, device=device) * time_step
@@ -771,20 +799,31 @@ def Euler_Maruyama_sampler(
                 if mask is not None:
                     next_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
 
-                v = torch.clamp(next_v, eps, 1 - eps).detach()
+                #v = torch.clamp(next_v, eps, 1 - eps).detach()
                 #v = reflect(next_v).detach()
+                if boundary_mode == 'clamp':
+                    v = torch.clamp(next_v, eps, 1 - eps).detach()
+                elif boundary_mode == 'reflect_boundaries':
+                    v = reflect_boundaries(next_v, eps, 1 - eps).detach()
+                elif boundary_mode == 'reflect':
+                    v = reflect(next_v).detach()
 
     if mask is not None:
         mean_v[~torch.isnan(mask_v)] = mask_v[~torch.isnan(mask_v)]
 
     # Do not include any noise in the last sampling step.
-    if not random_order:
-        return sb(torch.clamp(mean_v, eps, 1 - eps))
-        #return sb(reflect(mean_v))
-    else:
-        return sb(torch.clamp(mean_v, eps, 1 - eps))[..., np.argsort(order)]
-        #return sb(reflect(mean_v))[..., np.argsort(order)]
+    if boundary_mode == 'clamp':
+        mean_v_clamping = torch.clamp(mean_v, eps, 1 - eps)
+    elif boundary_mode == 'reflect_boundaries':
+        mean_v_clamping = reflect_boundaries(mean_v, eps, 1 - eps)
+    elif boundary_mode == 'reflect':
+        mean_v_clamping = reflect(mean_v)
 
+    if not random_order:
+        #return sb(torch.clamp(mean_v, eps, 1 - eps))
+        return sb(mean_v_clamping)
+    else:
+        return sb(mean_v_clamping)[..., np.argsort(order)]
 
 #############################################
 ########## Likelihood estimations ###########

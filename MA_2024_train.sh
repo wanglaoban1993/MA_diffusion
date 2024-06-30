@@ -25,7 +25,7 @@ source "/etc/slurm/local_job_dir.sh"
 echo "$PWD/${SLURM_JOB_ID}_stats.out" > $LOCAL_JOB_DIR/stats_file_loc_cfg
 
 echo "Job with base_env_pytorch.sif env, 
-+ here is running steps400.cat9.time1.0.samples50000_independent_model.pth, 
++ here is running steps100, s1, clamp, .pth', 
 + torch.clamp(),
 + without evaluation during training and save .pth in each 50 epochs"
 
@@ -45,8 +45,9 @@ echo "Job with base_env_pytorch.sif env,
 apptainer exec --nv --bind ${LOCAL_JOB_DIR} ../base_env_pytorch.sif \
 bash -c "
 source /opt/conda/bin/activate base  # Activate the base conda environment
-python3 ${SLURM_SUBMIT_DIR}/sudoku/train_sudoku.py 
+python3 ${SLURM_SUBMIT_DIR}/sudoku/train_sudoku_allinone.py -t 100 -spd 's1' -bm 'clamp'
 "
+#python3 ${SLURM_SUBMIT_DIR}/sudoku/train_sudoku_reflect_NO_sde100.py
 
 # This command copies all results generated in $LOCAL_JOB_DIR back to the submit folder regarding th$
 cp -r ${LOCAL_JOB_DIR}/${SLURM_JOB_ID} ${SLURM_SUBMIT_DIR}

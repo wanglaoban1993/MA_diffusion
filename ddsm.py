@@ -148,7 +148,7 @@ def reflect(x):
 
 
 def Jacobi_Euler_Maruyama_sampler(
-        x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5
+        x0, a, b, t, num_steps, speed_balanced=True, device="cuda", eps=1e-5, boundary_mode='clamp'
 ):
     """
     Generate Jacobi diffusion samples with the Euler-Maruyama solver.
@@ -173,9 +173,19 @@ def Jacobi_Euler_Maruyama_sampler(
         x_next = dx + torch.sqrt(step_size) * g * torch.randn_like(x) #modfy the step process more compact and cleaner
         
         ##### Ensure the values stay within [0, 1]
-        x_next = torch.clamp(x_next, eps, 1 - eps)
-        #x_next = reflect_boundaries(x_next, eps, 1 - eps)
-        #x_next= reflect(x_next)
+# <<<<<<< HEAD
+#         x_next = torch.clamp(x_next, eps, 1 - eps)
+#         #x_next = reflect_boundaries(x_next, eps, 1 - eps)
+#         #x_next= reflect(x_next)
+# =======
+        if boundary_mode == 'clamp':
+            x_next = torch.clamp(x_next, eps, 1 - eps)
+        elif boundary_mode == 'reflect_boundaries':
+            x_next = reflect_boundaries(x_next, eps, 1 - eps)
+        elif boundary_mode == 'reflect':
+            x_next= reflect(x_next)
+        else:
+            raise ValueError
         return x_next
     
     time_steps = torch.linspace(0, t, num_steps, device=device)
@@ -197,7 +207,9 @@ def noise_factory(N, n_time_steps, a, b, total_time=4, order=100,
                   time_steps=1000, speed_balanced=True, logspace=False,
                   mode="independent", 
                   #mode="path", 
-                  device="cuda"):
+                  device="cuda",
+                  noise_only=False,
+                  boundary_mode='clamp'):
     """
     Generate Jacobi diffusion samples and compute score of transition density function.
     """
@@ -214,67 +226,72 @@ def noise_factory(N, n_time_steps, a, b, total_time=4, order=100,
         for i, t in enumerate(timepoints):
             noise_factory_one[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                 noise_factory_one[:, i, :], a, b, t, time_steps,
-                speed_balanced=speed_balanced, device=device)
+                speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
             noise_factory_zero[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                 noise_factory_zero[:, i, :], a, b, t, time_steps,
-                speed_balanced=speed_balanced, device=device)
+                speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
     elif mode == "path":
         for i, t in enumerate(timepoints):
             if i == 0:
                 noise_factory_one[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_one[:, i, :], a, b, timepoints[i], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
                 noise_factory_zero[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_zero[:, i, :], a, b, timepoints[i], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
             else:
                 noise_factory_one[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_one[:, i - 1, :],
                     a, b, timepoints[i] - timepoints[i - 1], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
                 noise_factory_zero[:, i, :] = Jacobi_Euler_Maruyama_sampler(
                     noise_factory_zero[:, i - 1, :],
                     a, b, timepoints[i] - timepoints[i - 1], time_steps,
-                    speed_balanced=speed_balanced, device=device)
+                    speed_balanced=speed_balanced, device=device, boundary_mode=boundary_mode)
     else:
         raise ValueError
+    
+    
+    if noise_only:
+        return noise_factory_one, noise_factory_zero
+    
+    else:
+        noise_factory_one_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
+        noise_factory_zero_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
 
-    noise_factory_one_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
-    noise_factory_zero_loggrad = torch.zeros(N, n_time_steps, a.size(-1))
+        for i, t in enumerate(timepoints):
+            xt = noise_factory_one[:, i, :].detach().clone()
 
-    for i, t in enumerate(timepoints):
-        xt = noise_factory_one[:, i, :].detach().clone()
+            xt.requires_grad = True
+            p = jacobi_diffusion_density(
+                torch.ones(xt.size(), device=device),
+                xt.to(device), t, a.to(device), b.to(device), order=order,
+                speed_balanced=speed_balanced,
+            )
+            p.log().sum().backward()
+            noise_factory_one_loggrad[:, i, :] = xt.grad.to(
+                noise_factory_zero_loggrad.device
+            )
 
-        xt.requires_grad = True
-        p = jacobi_diffusion_density(
-            torch.ones(xt.size(), device=device),
-            xt.to(device), t, a.to(device), b.to(device), order=order,
-            speed_balanced=speed_balanced,
+            xt = noise_factory_zero[:, i, :].detach().clone()
+            xt.requires_grad = True
+            p = jacobi_diffusion_density(
+                torch.zeros(xt.size(), device=device),
+                xt.to(device), t, a.to(device), b.to(device),
+                order=order,
+                speed_balanced=speed_balanced,
+            )
+            p.log().sum().backward()
+            noise_factory_zero_loggrad[:, i, :] = xt.grad.to(
+                noise_factory_zero_loggrad.device
+            )
+        return (
+            noise_factory_one,
+            noise_factory_zero,
+            noise_factory_one_loggrad,
+            noise_factory_zero_loggrad,
+            timepoints,
         )
-        p.log().sum().backward()
-        noise_factory_one_loggrad[:, i, :] = xt.grad.to(
-            noise_factory_zero_loggrad.device
-        )
-
-        xt = noise_factory_zero[:, i, :].detach().clone()
-        xt.requires_grad = True
-        p = jacobi_diffusion_density(
-            torch.zeros(xt.size(), device=device),
-            xt.to(device), t, a.to(device), b.to(device),
-            order=order,
-            speed_balanced=speed_balanced,
-        )
-        p.log().sum().backward()
-        noise_factory_zero_loggrad[:, i, :] = xt.grad.to(
-            noise_factory_zero_loggrad.device
-        )
-    return (
-        noise_factory_one,
-        noise_factory_zero,
-        noise_factory_one_loggrad,
-        noise_factory_zero_loggrad,
-        timepoints,
-    )
 
 
 class UnitStickBreakingTransform(Transform):
